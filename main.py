@@ -4,14 +4,37 @@ from supabase import create_client
 from dotenv import load_dotenv
 import os
 
+# Load environment variables
 load_dotenv()
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 
+# Create Supabase client
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-app = FastAPI(title="WS Quotation Engine")
+# FastAPI app
+app = FastAPI(
+    title="WS Quotation Engine",
+    description="Insurance quotation API for WS",
+    version="1.0.0"
+)
+
+# -------------------------
+# HEALTH CHECK
+# -------------------------
+
+@app.get("/")
+def health_check():
+    return {
+        "status": "online",
+        "service": "WS Quotation API",
+        "version": "1.0.0"
+    }
+
+# -------------------------
+# REQUEST MODEL
+# -------------------------
 
 class MotorQuoteRequest(BaseModel):
     full_name: str
@@ -20,13 +43,14 @@ class MotorQuoteRequest(BaseModel):
     vehicle_source: str
     vehicle_value: float
 
-@app.get("/")
-def home():
-    return {"message": "WS Quotation Engine Running"}
+# -------------------------
+# MOTOR QUOTE ENDPOINT
+# -------------------------
 
 @app.post("/motor-quote")
 def motor_quote(request: MotorQuoteRequest):
     try:
+
         result = supabase.rpc(
             "create_motor_quote",
             {
@@ -39,17 +63,17 @@ def motor_quote(request: MotorQuoteRequest):
         ).execute()
 
         if not result.data:
-            raise HTTPException(status_code=400, detail="No quote returned")
+            raise HTTPException(
+                status_code=400,
+                detail="No quote returned"
+            )
 
         return result.data[0]
 
     except Exception as e:
-        print("ERROR:", e)
-        raise HTTPException(status_code=500, detail=str(e))
+        print("ERROR:", str(e))
 
-        @app.get("/")
-def health_check():
-    return {
-        "status": "online",
-        "service": "WS Quotation API"
-    }
+        raise HTTPException(
+            status_code=500,
+            detail=str(e)
+        )
