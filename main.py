@@ -33,7 +33,7 @@ def health_check():
     }
 
 # -------------------------
-# REQUEST MODEL
+# REQUEST MODELS
 # -------------------------
 
 class MotorQuoteRequest(BaseModel):
@@ -50,7 +50,6 @@ class MotorQuoteRequest(BaseModel):
 @app.post("/motor-quote")
 def motor_quote(request: MotorQuoteRequest):
     try:
-
         result = supabase.rpc(
             "create_motor_quote",
             {
@@ -72,7 +71,39 @@ def motor_quote(request: MotorQuoteRequest):
 
     except Exception as e:
         print("ERROR:", str(e))
+        raise HTTPException(
+            status_code=500,
+            detail=str(e)
+        )
 
+# -------------------------
+# QUOTE LOOKUP ENDPOINT
+# -------------------------
+
+@app.get("/quote/{quote_reference}")
+def get_quote(quote_reference: str):
+    try:
+        result = (
+            supabase
+            .table("quotes")
+            .select("*, customers(*)")
+            .eq("quote_reference", quote_reference)
+            .execute()
+        )
+
+        if not result.data:
+            raise HTTPException(
+                status_code=404,
+                detail="Quote not found"
+            )
+
+        return result.data[0]
+
+    except HTTPException:
+        raise
+
+    except Exception as e:
+        print("ERROR:", str(e))
         raise HTTPException(
             status_code=500,
             detail=str(e)
