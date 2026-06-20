@@ -5,6 +5,10 @@ from dotenv import load_dotenv
 import resend
 import os
 
+# -------------------------
+# ENVIRONMENT SETUP
+# -------------------------
+
 load_dotenv()
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
@@ -13,13 +17,23 @@ RESEND_API_KEY = os.getenv("RESEND_API_KEY")
 FROM_EMAIL = os.getenv("FROM_EMAIL", "onboarding@resend.dev")
 
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
-resend.api_key = RESEND_API_KEY
+
+if RESEND_API_KEY:
+    resend.api_key = RESEND_API_KEY
+
+# -------------------------
+# FASTAPI APP
+# -------------------------
 
 app = FastAPI(
     title="WS Quotation Engine",
     description="Insurance quotation API for WS",
-    version="1.1.0"
+    version="1.2.0"
 )
+
+# -------------------------
+# REQUEST MODELS
+# -------------------------
 
 class MotorQuoteRequest(BaseModel):
     full_name: str
@@ -28,17 +42,35 @@ class MotorQuoteRequest(BaseModel):
     vehicle_source: str
     vehicle_value: float
 
+
+class GPAQuoteRequest(BaseModel):
+    full_name: str
+    phone_number: str
+    email: EmailStr
+    tier_plan: str
+
+# -------------------------
+# HEALTH CHECK
+# -------------------------
+
 @app.get("/")
 def health_check():
     return {
         "status": "online",
         "service": "WS Quotation API",
-        "version": "1.1.0"
+        "version": "1.2.0"
     }
+
+# -------------------------
+# EMAIL FUNCTION
+# -------------------------
 
 def send_quote_email(customer_email: str, full_name: str, quote: dict):
     if not RESEND_API_KEY:
-        return {"email_sent": False, "reason": "RESEND_API_KEY not configured"}
+        return {
+            "email_sent": False,
+            "reason": "RESEND_API_KEY not configured"
+        }
 
     status = quote.get("result_status")
     quote_ref = quote.get("result_quote_reference")
@@ -47,11 +79,11 @@ def send_quote_email(customer_email: str, full_name: str, quote: dict):
     message = quote.get("result_message")
 
     if status == "APPROVED":
-        subject = f"Your WS Motor Insurance Quote - {quote_ref}"
+        subject = f"Your WS Insurance Quote - {quote_ref}"
         body = f"""
 Hi {full_name},
 
-Your motor insurance quotation is ready.
+Your insurance quotation is ready.
 
 Quote Reference: {quote_ref}
 Status: Approved
@@ -64,11 +96,11 @@ Regards,
 WS Insurance
 """
     else:
-        subject = f"WS Motor Insurance Referral - {quote_ref}"
+        subject = f"WS Insurance Referral - {quote_ref}"
         body = f"""
 Hi {full_name},
 
-Your motor insurance quotation requires underwriting review.
+Your insurance quotation requires underwriting review.
 
 Quote Reference: {quote_ref}
 Status: Referral Required
@@ -85,6 +117,10 @@ WS Insurance
         "subject": subject,
         "text": body
     })
+
+# -------------------------
+# MOTOR QUOTE ENDPOINT
+# -------------------------
 
 @app.post("/motor-quote")
 def motor_quote(request: MotorQuoteRequest):
@@ -124,6 +160,52 @@ def motor_quote(request: MotorQuoteRequest):
     except Exception as e:
         print("ERROR:", str(e))
         raise HTTPException(status_code=500, detail=str(e))
+
+# -------------------------
+# GPA QUOTE ENDPOINT
+# -------------------------
+
+@app.post("/gpa-quote")
+def gpa_quote(request: GPAQuoteRequest):
+    try:
+        result = supabase.rpc(
+            "create_gpa_quote",
+            {
+                "p_full_name": request.full_name,
+                "p_phone_number": request.phone_number,
+                "p_email": request.email,
+                "p_tier_plan": request.tier_plan
+            }
+        ).execute()
+
+        if not result.data:
+            raise HTTPException(status_code=400, detail="No quote returned")
+
+        quote = result.data[0]
+
+        try:
+            email_result = send_quote_email(
+                customer_email=request.email,
+                full_name=request.full_name,
+                quote=quote
+            )
+        except Exception as email_error:
+            email_result = {
+                "email_sent": False,
+                "error": str(email_error)
+            }
+
+        quote["email_notification"] = email_result
+
+        return quote
+
+    except Exception as e:
+        print("ERROR:", str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
+# -------------------------
+# QUOTE LOOKUP ENDPOINT
+# -------------------------
 
 @app.get("/quote/{quote_reference}")
 def get_quote(quote_reference: str):
