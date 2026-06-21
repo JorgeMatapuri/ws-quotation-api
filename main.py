@@ -1,4 +1,5 @@
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, EmailStr
 from supabase import create_client
 from dotenv import load_dotenv
@@ -28,7 +29,25 @@ if RESEND_API_KEY:
 app = FastAPI(
     title="WS Quotation Engine",
     description="Multi-product insurance quotation API for WS",
-    version="1.4.0"
+    version="1.4.1"
+)
+
+# -------------------------
+# CORS CONFIGURATION
+# -------------------------
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "https://wsquote.netlify.app",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:5500",
+        "http://127.0.0.1:5500"
+    ],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # -------------------------
@@ -98,7 +117,7 @@ def health_check():
     return {
         "status": "online",
         "service": "WS Quotation API",
-        "version": "1.4.0"
+        "version": "1.4.1"
     }
 
 
