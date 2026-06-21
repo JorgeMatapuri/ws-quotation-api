@@ -27,8 +27,8 @@ if RESEND_API_KEY:
 
 app = FastAPI(
     title="WS Quotation Engine",
-    description="Insurance quotation API for WS",
-    version="1.2.0"
+    description="Multi-product insurance quotation API for WS",
+    version="1.4.0"
 )
 
 # -------------------------
@@ -49,6 +49,46 @@ class GPAQuoteRequest(BaseModel):
     email: EmailStr
     tier_plan: str
 
+
+class DomesticQuoteRequest(BaseModel):
+    full_name: str
+    phone_number: str
+    email: EmailStr
+    coverage_type: str
+    sum_insured: float
+
+
+class WCAQuoteRequest(BaseModel):
+    full_name: str
+    phone_number: str
+    email: EmailStr
+    annual_payroll: float
+
+
+class CommercialVehicleQuoteRequest(BaseModel):
+    full_name: str
+    phone_number: str
+    email: EmailStr
+    commercial_class: str
+    vehicle_value: float
+
+
+class CommercialLDVHCVQuoteRequest(BaseModel):
+    full_name: str
+    phone_number: str
+    email: EmailStr
+    vehicle_category_bracket: str
+    vehicle_value: float
+
+
+class CommercialNonMotorQuoteRequest(BaseModel):
+    full_name: str
+    phone_number: str
+    email: EmailStr
+    module_name: str
+    sum_insured: float
+
+
 # -------------------------
 # HEALTH CHECK
 # -------------------------
@@ -58,8 +98,9 @@ def health_check():
     return {
         "status": "online",
         "service": "WS Quotation API",
-        "version": "1.2.0"
+        "version": "1.4.0"
     }
+
 
 # -------------------------
 # EMAIL FUNCTION
@@ -118,90 +159,151 @@ WS Insurance
         "text": body
     })
 
+
 # -------------------------
-# MOTOR QUOTE ENDPOINT
+# SHARED HELPER
+# -------------------------
+
+def attach_email_notification(quote: dict, request):
+    try:
+        email_result = send_quote_email(
+            customer_email=request.email,
+            full_name=request.full_name,
+            quote=quote
+        )
+    except Exception as email_error:
+        email_result = {
+            "email_sent": False,
+            "error": str(email_error)
+        }
+
+    quote["email_notification"] = email_result
+    return quote
+
+
+def call_quote_function(function_name: str, params: dict, request):
+    try:
+        result = supabase.rpc(function_name, params).execute()
+
+        if not result.data:
+            raise HTTPException(status_code=400, detail="No quote returned")
+
+        return attach_email_notification(result.data[0], request)
+
+    except HTTPException:
+        raise
+
+    except Exception as e:
+        print("ERROR:", str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# -------------------------
+# QUOTE ENDPOINTS
 # -------------------------
 
 @app.post("/motor-quote")
 def motor_quote(request: MotorQuoteRequest):
-    try:
-        result = supabase.rpc(
-            "create_motor_quote",
-            {
-                "p_full_name": request.full_name,
-                "p_phone_number": request.phone_number,
-                "p_email": request.email,
-                "p_vehicle_source": request.vehicle_source,
-                "p_vehicle_value": request.vehicle_value
-            }
-        ).execute()
+    return call_quote_function(
+        "create_motor_quote",
+        {
+            "p_full_name": request.full_name,
+            "p_phone_number": request.phone_number,
+            "p_email": request.email,
+            "p_vehicle_source": request.vehicle_source,
+            "p_vehicle_value": request.vehicle_value
+        },
+        request
+    )
 
-        if not result.data:
-            raise HTTPException(status_code=400, detail="No quote returned")
-
-        quote = result.data[0]
-
-        try:
-            email_result = send_quote_email(
-                customer_email=request.email,
-                full_name=request.full_name,
-                quote=quote
-            )
-        except Exception as email_error:
-            email_result = {
-                "email_sent": False,
-                "error": str(email_error)
-            }
-
-        quote["email_notification"] = email_result
-
-        return quote
-
-    except Exception as e:
-        print("ERROR:", str(e))
-        raise HTTPException(status_code=500, detail=str(e))
-
-# -------------------------
-# GPA QUOTE ENDPOINT
-# -------------------------
 
 @app.post("/gpa-quote")
 def gpa_quote(request: GPAQuoteRequest):
-    try:
-        result = supabase.rpc(
-            "create_gpa_quote",
-            {
-                "p_full_name": request.full_name,
-                "p_phone_number": request.phone_number,
-                "p_email": request.email,
-                "p_tier_plan": request.tier_plan
-            }
-        ).execute()
+    return call_quote_function(
+        "create_gpa_quote",
+        {
+            "p_full_name": request.full_name,
+            "p_phone_number": request.phone_number,
+            "p_email": request.email,
+            "p_tier_plan": request.tier_plan
+        },
+        request
+    )
 
-        if not result.data:
-            raise HTTPException(status_code=400, detail="No quote returned")
 
-        quote = result.data[0]
+@app.post("/domestic-quote")
+def domestic_quote(request: DomesticQuoteRequest):
+    return call_quote_function(
+        "create_domestic_quote",
+        {
+            "p_full_name": request.full_name,
+            "p_phone_number": request.phone_number,
+            "p_email": request.email,
+            "p_coverage_type": request.coverage_type,
+            "p_sum_insured": request.sum_insured
+        },
+        request
+    )
 
-        try:
-            email_result = send_quote_email(
-                customer_email=request.email,
-                full_name=request.full_name,
-                quote=quote
-            )
-        except Exception as email_error:
-            email_result = {
-                "email_sent": False,
-                "error": str(email_error)
-            }
 
-        quote["email_notification"] = email_result
+@app.post("/wca-quote")
+def wca_quote(request: WCAQuoteRequest):
+    return call_quote_function(
+        "create_wca_quote",
+        {
+            "p_full_name": request.full_name,
+            "p_phone_number": request.phone_number,
+            "p_email": request.email,
+            "p_annual_payroll": request.annual_payroll
+        },
+        request
+    )
 
-        return quote
 
-    except Exception as e:
-        print("ERROR:", str(e))
-        raise HTTPException(status_code=500, detail=str(e))
+@app.post("/commercial-vehicle-quote")
+def commercial_vehicle_quote(request: CommercialVehicleQuoteRequest):
+    return call_quote_function(
+        "create_commercial_vehicle_quote",
+        {
+            "p_full_name": request.full_name,
+            "p_phone_number": request.phone_number,
+            "p_email": request.email,
+            "p_commercial_class": request.commercial_class,
+            "p_vehicle_value": request.vehicle_value
+        },
+        request
+    )
+
+
+@app.post("/commercial-ldv-hcv-quote")
+def commercial_ldv_hcv_quote(request: CommercialLDVHCVQuoteRequest):
+    return call_quote_function(
+        "create_commercial_ldv_hcv_quote",
+        {
+            "p_full_name": request.full_name,
+            "p_phone_number": request.phone_number,
+            "p_email": request.email,
+            "p_vehicle_category_bracket": request.vehicle_category_bracket,
+            "p_vehicle_value": request.vehicle_value
+        },
+        request
+    )
+
+
+@app.post("/commercial-non-motor-quote")
+def commercial_non_motor_quote(request: CommercialNonMotorQuoteRequest):
+    return call_quote_function(
+        "create_commercial_non_motor_quote",
+        {
+            "p_full_name": request.full_name,
+            "p_phone_number": request.phone_number,
+            "p_email": request.email,
+            "p_module_name": request.module_name,
+            "p_sum_insured": request.sum_insured
+        },
+        request
+    )
+
 
 # -------------------------
 # QUOTE LOOKUP ENDPOINT
